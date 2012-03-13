@@ -1,0 +1,12 @@
+README
+======
+
+PHP script to dump RDS databases as gzipped files in s3 buckets
+
+
+The project requires:
+==============================
+
+* PHP >= 5.2.1
+* PHP MySQL extension
+* AWS PHP SDK
