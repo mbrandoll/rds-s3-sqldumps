@@ -51,7 +51,7 @@ class MySQLBackup {
 	public function __construct(array $source, array $target, $options = array())
 	{
 	
-		if (isset($config['tmp_path']) && !empty($options['tmp_path'])) {
+		if (isset($options['tmp_path']) && !empty($options['tmp_path'])) {
 			$this->_tmp_path = realpath($options['tmp_path']) . '/';
 		} else {
 			$this->_tmp_path = '/tmp/';
