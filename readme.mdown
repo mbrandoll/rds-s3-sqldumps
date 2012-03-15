@@ -19,5 +19,5 @@ Setup on AWS Linux AMI:
 yum install -y php php-mysql php-pear mysql 
 pear channel-discover pear.amazonwebservices.com
 pear install aws/sdk
-git clone git://github.com/aporatgit@github.com:aporat/rds-s3-sqldumps.git
+git clone git://github.com/rds-s3-sqldumps.git
 ```
