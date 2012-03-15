@@ -4,13 +4,6 @@ class MySQLBackup {
 	const SLEEP_BETWEEN_REQUESTS = 5;
 	
 	/**
-	 * tmp dir to save files
-	 * 
-	 * @var string
-	 */
-	private $_tmp_path = null;
-	
-	/**
 	 * source options
 	 * 
 	 * @var array
@@ -41,6 +34,19 @@ class MySQLBackup {
 	 */
 	private $_mysqldump = null;
 	
+	/**
+	 * tmp dir to save files
+	 *
+	 * @var string
+	 */
+	private $_tmp_path = null;
+	
+	/**
+	 * split the backups to smaller chunks
+	 * 
+	 * @var string
+	 */
+	private $_splitFilesBySize = null;
 
 	/**
 	 * 
@@ -52,15 +58,23 @@ class MySQLBackup {
 	{
 	
 		if (isset($options['tmp_path']) && !empty($options['tmp_path'])) {
-			$this->_tmp_path = realpath($options['tmp_path']) . '/';
+			$this->_tmp_path = realpath($options['tmp_path']) . '/' . date('Y-m-d_Hi') . '/';
 		} else {
-			$this->_tmp_path = '/tmp/';
+			$this->_tmp_path = '/tmp/' . date('Y-m-d_Hi') . '/';
+		}
+		
+		if (!is_dir($this->_tmp_path)) {
+			mkdir($this->_tmp_path);
+		}
+		
+		if (isset($options['split_files_by_size']) && !empty($options['split_files_by_size'])) {
+			$this->_splitFilesBySize = $options['split_files_by_size'];
 		}
 				
 		$this->_source = $source;
 		$this->_target = $target;		
 	
-		$this->_filename = $source['host'] . '_' . date('Y-m-d_Hi').".sql";
+		$this->_filename = $source['host'] .".sql";
 		
 		if (isset($options['mysqldump_path']) && !empty($options['mysqldump_path'])) {
 			$this->_mysqldump = $options['mysqldump_path'];
@@ -101,7 +115,7 @@ class MySQLBackup {
 			$link = mysql_connect($this->_source['host'] . ':' . $this->_source['port'], $this->_source['username'], $this->_source['password']);
 				
 			if (!$link) {
-				echo 'Unable to connect to RDS replica - ' . mysql_error();
+				echo 'Unable to connect to RDS replica - ' . mysql_error() . PHP_EOL;
 			} else {
 				$ready = true;
 			}
@@ -114,12 +128,14 @@ class MySQLBackup {
 		
 		// dump the database
 		$mysqldump_command = 
-				$this->_mysqldump . 'mysqldump ' . 
+				$this->_mysqldump . 'mysqldump' . 
 				' --host=' . escapeshellarg($this->_source['host']) .
 				' --port=' . escapeshellarg($this->_source['port']) .
 				' --user=' . escapeshellarg($this->_source['username']) .
 				' --password=' . escapeshellarg($this->_source['password']) .
-				' --all-databases  --skip-lock-tables --debug-info ' .
+				' --all-databases' . 
+				' --skip-lock-tables' . 
+				' --debug-info' .
 				' > ' . escapeshellarg($this->_tmp_path . $this->_filename);
 	
 		$output = '';
@@ -131,13 +147,18 @@ class MySQLBackup {
 			throw new \Exception('mysqldump dump failed - ' . $mysqldump_command . ' - ' . print_R($output, true));
 		}
 	
-		
+		$extra = '';
+		if (is_numeric($this->_splitFilesBySize)) {
+			$extra .= '-s ' . $this->_splitFilesBySize . ' ';
+		}
 	
 		// gzip the results
-		$gzip_command = 'tar -zcf ' . escapeshellarg($this->_tmp_path . $this->_filename . '.tar.gz') . ' -C ' . escapeshellarg($this->_tmp_path) . ' ' . escapeshellarg($this->_filename);
+		$gzip_command = 'zip -r ' . $extra . escapeshellarg($this->_tmp_path . $this->_filename . '.zip') . ' ' . escapeshellarg($this->_tmp_path . $this->_filename);
 		exec($gzip_command);
 		echo $gzip_command . PHP_EOL;
-		
+
+		// remove the original sql dump
+		unlink($this->_tmp_path . $this->_filename);
 	}
 	
 	/**
@@ -158,17 +179,31 @@ class MySQLBackup {
 			
 		}
 
-		// move the file
-		$opt = array (
-			'fileUpload' => $this->_tmp_path . $this->_filename . '.tar.gz',
-			'acl' => \AmazonS3::ACL_PRIVATE
-		);
+		
+		if ($dh = opendir($this->_tmp_path)) {
 			
-		try {
-			$response = $s3->create_object($bucket_name, $this->_filename . '.tar.gz', $opt);
-		} catch (\Exception $e) {
+			while (($file = readdir($dh)) !== false) {
+				if (is_file($this->_tmp_path . '/' . $file)) {
+					echo $this->_tmp_path . '/' . $file . PHP_EOL;
+					$opt = array (
+						'fileUpload' => $this->_tmp_path . '/' . $file,
+						'acl' => \AmazonS3::ACL_PRIVATE
+					);
+						
+					try {
+						$response = $s3->create_object($bucket_name, date('Y-m-d_Hi') . '/' . $file, $opt);
+					} catch (\Exception $e) {
+							
+					}
+
+					unlink($this->_tmp_path . '/' . $file);
+				}		
+			}
 			
+			closedir($dh);
 		}
+		
+
 		
 		if ($response->isOK()) {
 			return true;
@@ -179,14 +214,13 @@ class MySQLBackup {
 	
 	
 	/**
-	 * remove the rds backup instance, remove the snapshot and remove the security group
+	 * remove the tmp dir
 	 */
 	private function cleanup()
 	{
-	
-		unlink($this->_tmp_path . $this->_filename);
-		unlink($this->_tmp_path . $this->_filename . '.tar.gz');
+		echo 'Cleaning up local backups' . PHP_EOL;
 		
+		rmdir($this->_tmp_path);		
 	}
 	
 }
