@@ -94,6 +94,7 @@ class MySQLBackup {
 			$this->uploadToS3();
 							
 		} catch (\Exception $e) {
+			echo $e->getMessage() . PHP_EOL;
 			$this->cleanup();
 		}
 		
@@ -183,20 +184,20 @@ class MySQLBackup {
 		if ($dh = opendir($this->_tmp_path)) {
 			
 			while (($file = readdir($dh)) !== false) {
-				if (is_file($this->_tmp_path . '/' . $file)) {
-					echo $this->_tmp_path . '/' . $file . PHP_EOL;
+				if (is_file($this->_tmp_path . $file)) {
+					echo 'uploading ' . $this->_tmp_path . $file . PHP_EOL;
 					$opt = array (
-						'fileUpload' => $this->_tmp_path . '/' . $file,
+						'fileUpload' => $this->_tmp_path . $file,
 						'acl' => \AmazonS3::ACL_PRIVATE
 					);
 						
 					try {
 						$response = $s3->create_object($bucket_name, date('Y-m-d_Hi') . '/' . $file, $opt);
 					} catch (\Exception $e) {
-							
+						echo $e->getMessage() . PHP_EOL;
 					}
 
-					unlink($this->_tmp_path . '/' . $file);
+					unlink($this->_tmp_path . $file);
 				}		
 			}
 			
