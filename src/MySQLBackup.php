@@ -1,7 +1,7 @@
 <?php
 class MySQLBackup {
 
-	const SLEEP_BETWEEN_REQUESTS = 5;
+	const SLEEP_BETWEEN_REQUESTS = 1;
 	
 	/**
 	 * source options
@@ -58,7 +58,7 @@ class MySQLBackup {
 	 * @param array $target
 	 * @param array $options
 	 */
-	public function __construct(array $source, array $target, $options = array())
+	public function __construct(array $source, array $target, array $options = array())
 	{
 	
 		$this->_path = date('Y-m-d_Hi') . '/';
@@ -98,13 +98,15 @@ class MySQLBackup {
 		try {
 			$this->databaseDump();
 			$this->uploadToS3();
+			echo 'Backup completed = ' . PHP_EOL;
+			$this->cleanup();
+			
 							
 		} catch (\Exception $e) {
-			echo $e->getMessage() . PHP_EOL;
+			echo 'Backup failed = ' . $e->getMessage() . PHP_EOL;
 			$this->cleanup();
-		}
-		
-		$this->cleanup();
+			throw $e;
+		} 
 	}
 	
 
@@ -118,11 +120,11 @@ class MySQLBackup {
 		$ready = false;
 		$tries = 0;
 		
-		while (!$ready && $tries<=20) {
-			$link = mysql_connect($this->_source['host'] . ':' . $this->_source['port'], $this->_source['username'], $this->_source['password']);
-				
+		while (!$ready && $tries<=5) {	
+			$link = @mysql_connect($this->_source['host'] . ':' . $this->_source['port'], $this->_source['username'], $this->_source['password']);
+
 			if (!$link) {
-				echo 'Unable to connect to RDS replica - ' . mysql_error() . PHP_EOL;
+				echo 'Unable to connect to mysql host - ' . mysql_error() . PHP_EOL;
 			} else {
 				$ready = true;
 			}
@@ -130,6 +132,10 @@ class MySQLBackup {
 			sleep(self::SLEEP_BETWEEN_REQUESTS);
 				
 			$tries++;
+			
+			if ($tries==5) {
+				throw new \Exception('Unable to connect to mysql host after 20 tries - ' . mysql_error());
+			}
 		}
 		
 		
@@ -198,7 +204,7 @@ class MySQLBackup {
 					);
 						
 					try {
-						$response = $s3->create_object($bucket_name, $this->_path . '/' . $file, $opt);
+						$response = $s3->create_object($bucket_name, $this->_path . $file, $opt);
 					} catch (\Exception $e) {
 						echo $e->getMessage() . PHP_EOL;
 					}
