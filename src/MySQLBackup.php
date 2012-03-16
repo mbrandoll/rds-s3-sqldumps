@@ -17,8 +17,6 @@ class MySQLBackup {
 	 */
 	private $_target = array();
 	
-
-
 	/**
 	 * backup filename
 	 * 
@@ -26,6 +24,12 @@ class MySQLBackup {
 	 */
 	private $_filename = null;
 	
+	/**
+	 * backup path
+	 * 
+	 * @var string
+	 */
+	private $_path = null;
 	
 	/**
 	 * mysql dump command path
@@ -57,12 +61,14 @@ class MySQLBackup {
 	public function __construct(array $source, array $target, $options = array())
 	{
 	
-		if (isset($options['tmp_path']) && !empty($options['tmp_path'])) {
-			$this->_tmp_path = realpath($options['tmp_path']) . '/' . date('Y-m-d_Hi') . '/';
-		} else {
-			$this->_tmp_path = '/tmp/' . date('Y-m-d_Hi') . '/';
-		}
+		$this->_path = date('Y-m-d_Hi') . '/';
 		
+		if (isset($options['tmp_path']) && !empty($options['tmp_path'])) {
+			$this->_tmp_path = realpath($options['tmp_path']) . '/' . $this->_path;
+		} else {
+			$this->_tmp_path = '/tmp/' . $this->_path;
+		}
+				
 		if (!is_dir($this->_tmp_path)) {
 			mkdir($this->_tmp_path);
 		}
@@ -192,7 +198,7 @@ class MySQLBackup {
 					);
 						
 					try {
-						$response = $s3->create_object($bucket_name, date('Y-m-d_Hi') . '/' . $file, $opt);
+						$response = $s3->create_object($bucket_name, $this->_path . '/' . $file, $opt);
 					} catch (\Exception $e) {
 						echo $e->getMessage() . PHP_EOL;
 					}
@@ -203,8 +209,6 @@ class MySQLBackup {
 			
 			closedir($dh);
 		}
-		
-
 		
 		if ($response->isOK()) {
 			return true;
